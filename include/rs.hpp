@@ -21,16 +21,36 @@ namespace RS {
 #define MSG_CNT 3   // message-length polynomials count
 #define POLY_CNT 14 // (ecc_length*2)-length polynomialc count
 
-template <const uint8_t msg_length,  // Message length without correction code
-          const uint8_t ecc_length>  // Length of correction code
-
 class ReedSolomon {
 public:
-    ReedSolomon() {
-        const uint8_t   enc_len  = msg_length + ecc_length;
-        const uint8_t   poly_len = ecc_length * 2;
-        uint8_t** memptr   = &memory;
-        uint16_t  offset   = 0;
+
+    /* @brief Object constructor
+     * @param msg_length - message buffer size
+     * @param ecc_length - rs redundancy size
+     * @param mem - extern mem for embedded systems used ([MSG_CNT * msg_length + POLY_CNT * ecc_length * 2] size) */
+    ReedSolomon(uint8_t msg_length, uint8_t ecc_length, uint8_t* mem = NULL) {
+        const uint8_t enc_len = msg_length + ecc_length;
+        const uint8_t poly_len = ecc_length * 2;
+        uint8_t** memptr = &memory;
+        uint16_t offset = 0;
+
+        this->msg_length = msg_length;
+        this->ecc_length = ecc_length;
+
+        if (mem == NULL) {
+            /* dynamic mem */
+            mem_extern = false;
+            memory = new uint8_t[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
+        }
+        else {
+            /* extern user mem (for embedded systems)*/
+            mem_extern = true;
+            memory = mem;
+        }
+
+        /* initialize cached param */
+        memset(generator_cache, 0, sizeof(generator_cache));
+        generator_cached = false;
 
         /* Initialize first six polys manually cause their amount depends on template parameters */
 
@@ -55,6 +75,11 @@ public:
     }
 
     ~ReedSolomon() {
+
+        if (!mem_extern) {
+            delete[] memory;
+        }
+
         // Dummy destructor, gcc-generated one crashes programm
         memory = NULL;
     }
@@ -62,16 +87,8 @@ public:
     /* @brief Message block encoding
      * @param *src - input message buffer      (msg_lenth size)
      * @param *dst - output buffer for ecc     (ecc_length size at least) */
-     void EncodeBlock(const void* src, void* dst) {
+    void EncodeBlock(const void* src, void* dst) {
         assert(msg_length + ecc_length < 256);
-
-        /* Generator cache, it dosn't change for one template parameters */
-        static uint8_t generator_cache[ecc_length+1] = {0};
-        static bool    generator_cached = false;
-
-        /* Allocating memory on stack for polynomials storage */
-        uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
-        this->memory = stack_memory;
 
         const uint8_t* src_ptr = (const uint8_t*) src;
         uint8_t* dst_ptr = (uint8_t*) dst;
@@ -133,7 +150,7 @@ public:
      * @param *erase_pos   - known errors positions
      * @param erase_count  - count of known errors
      * @return RESULT_SUCCESS if successfull, error code otherwise */
-     int DecodeBlock(const void* src, const void* ecc, void* dst, uint8_t* erase_pos = NULL, size_t erase_count = 0) {
+    int DecodeBlock(const void* src, const void* ecc, void* dst, uint8_t* erase_pos = NULL, size_t erase_count = 0) {
         assert(msg_length + ecc_length < 256);
 
         const uint8_t *src_ptr = (const uint8_t*) src;
@@ -144,10 +161,6 @@ public:
         const uint8_t dst_len = msg_length;
 
         bool ok;
-
-        /* Allocation memory on stack */
-        uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
-        this->memory = stack_memory;
 
         Poly *msg_in  = &polynoms[ID_MSG_IN];
         Poly *msg_out = &polynoms[ID_MSG_OUT];
@@ -217,7 +230,7 @@ public:
         // Correcting errors
         CorrectErrata(synd, epos, msg_in);
 
-    return_corrected_msg:
+return_corrected_msg:
         // Wrighting corrected message to output buffer
         msg_out->length = dst_len;
         memcpy(dst_ptr, msg_out->ptr(), msg_out->length * sizeof(uint8_t));
@@ -230,12 +243,12 @@ public:
      * @param *erase_pos   - known errors positions
      * @param erase_count  - count of known errors
      * @return RESULT_SUCCESS if successfull, error code otherwise */
-     int Decode(const void* src, void* dst, uint8_t* erase_pos = NULL, size_t erase_count = 0) {
-         const uint8_t *src_ptr = (const uint8_t*) src;
-         const uint8_t *ecc_ptr = src_ptr + msg_length;
+    int Decode(const void* src, void* dst, uint8_t* erase_pos = NULL, size_t erase_count = 0) {
+        const uint8_t *src_ptr = (const uint8_t*) src;
+        const uint8_t *ecc_ptr = src_ptr + msg_length;
 
-         return DecodeBlock(src, ecc_ptr, dst, erase_pos, erase_count);
-     }
+        return DecodeBlock(src, ecc_ptr, dst, erase_pos, erase_count);
+    }
 
 #ifndef DEBUG
 private:
@@ -266,9 +279,13 @@ private:
         ID_ERR_EVAL
     };
 
-    // Pointer for polynomials memory on stack
+    bool mem_extern;
     uint8_t* memory;
     Poly polynoms[MSG_CNT + POLY_CNT];
+    uint8_t msg_length;
+    uint8_t ecc_length;
+    uint8_t generator_cache[255];
+    bool generator_cached;
 
     void GeneratorPoly() {
         Poly *gen = polynoms + ID_GENERATOR;
