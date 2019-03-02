@@ -26,27 +26,15 @@ public:
 
     /* @brief Object constructor
      * @param msg_length - message buffer size
-     * @param ecc_length - rs redundancy size
-     * @param mem - extern mem for embedded systems used ([MSG_CNT * msg_length + POLY_CNT * ecc_length * 2] size) */
-    ReedSolomon(uint8_t msg_length, uint8_t ecc_length, uint8_t* mem = NULL) {
+     * @param ecc_length - rs redundancy size */
+    ReedSolomon(uint8_t _msg_length, uint8_t _ecc_length) :
+        msg_length(_msg_length),
+        ecc_length(_ecc_length)
+    {
         const uint8_t enc_len = msg_length + ecc_length;
         const uint8_t poly_len = ecc_length * 2;
         uint8_t** memptr = &memory;
         uint16_t offset = 0;
-
-        this->msg_length = msg_length;
-        this->ecc_length = ecc_length;
-
-        if (mem == NULL) {
-            /* dynamic mem */
-            mem_extern = false;
-            memory = new uint8_t[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
-        }
-        else {
-            /* extern user mem (for embedded systems)*/
-            mem_extern = true;
-            memory = mem;
-        }
 
         /* initialize cached param */
         memset(generator_cache, 0, sizeof(generator_cache));
@@ -76,10 +64,6 @@ public:
 
     ~ReedSolomon() {
 
-        if (!mem_extern) {
-            delete[] memory;
-        }
-
         // Dummy destructor, gcc-generated one crashes programm
         memory = NULL;
     }
@@ -89,6 +73,10 @@ public:
      * @param *dst - output buffer for ecc     (ecc_length size at least) */
     void EncodeBlock(const void* src, void* dst) {
         assert(msg_length + ecc_length < 256);
+
+        /* Allocating memory on stack for polynomials storage */
+        uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
+        this->memory = stack_memory;
 
         const uint8_t* src_ptr = (const uint8_t*) src;
         uint8_t* dst_ptr = (uint8_t*) dst;
@@ -103,7 +91,7 @@ public:
 
         // Using cached generator or generating new one
         if(generator_cached) {
-            gen->Set(generator_cache, sizeof(generator_cache));
+            gen->Set(generator_cache, ecc_length+1);
         } else {
             GeneratorPoly();
             memcpy(generator_cache, gen->ptr(), gen->length);
@@ -161,6 +149,10 @@ public:
         const uint8_t dst_len = msg_length;
 
         bool ok;
+
+        /* Allocation memory on stack */
+        uint8_t stack_memory[MSG_CNT * msg_length + POLY_CNT * ecc_length * 2];
+        this->memory = stack_memory;
 
         Poly *msg_in  = &polynoms[ID_MSG_IN];
         Poly *msg_out = &polynoms[ID_MSG_OUT];
@@ -279,11 +271,10 @@ private:
         ID_ERR_EVAL
     };
 
-    bool mem_extern;
     uint8_t* memory;
     Poly polynoms[MSG_CNT + POLY_CNT];
-    uint8_t msg_length;
-    uint8_t ecc_length;
+    const uint8_t msg_length;
+    const uint8_t ecc_length;
     uint8_t generator_cache[255];
     bool generator_cached;
 
