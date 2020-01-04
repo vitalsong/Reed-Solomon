@@ -7,7 +7,7 @@
 #include "rs.hpp"
 using namespace std;
 
-#define ECC_LENGTH 8
+#define ECC_LENGTH (8)
 
 int main() {
 
@@ -17,9 +17,7 @@ int main() {
     char repaired[msglen];
     char encoded[msglen + ECC_LENGTH];
 
-
-    RS::ReedSolomon<msglen, ECC_LENGTH> rs;
-
+    RS::ReedSolomon rs(msglen, ECC_LENGTH);
     rs.Encode(message, encoded);
 
     // Corrupting first 8 bytes of message (any 8 bytes can be repaired)

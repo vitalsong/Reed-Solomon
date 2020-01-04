@@ -24,7 +24,7 @@ To build tests and examples simply run <b>make</b> in the folder with cloned rep
 
 All the Reed-Solomon code is in folder **include**, you just need to include header <b>rs.hpp</b>
 
-Template class ReedSolomon accepts two template arguments: message length and ecc length. <br>
+ReedSolomon class accepts two arguments: message length and ecc length. <br>
 Simple example: <br>
 ```
     char message[] = "Some very important message ought to be delivered";
@@ -34,8 +34,7 @@ Simple example: <br>
     char repaired[msglen];
     char encoded[msglen + ecclen];
 
-
-    RS::ReedSolomon<msglen, ecclen> rs;
+    RS::ReedSolomon rs(msglen, ecclen);
 
     rs.Encode(message, encoded);
 
